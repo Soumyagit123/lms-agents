@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: lms-analysis-agent
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: REDIS_URL
+        sync: false
+      - key: LMS_BASE_URL
+        sync: false
+      - key: LMS_AUTH_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
