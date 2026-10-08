@@ -6,7 +6,7 @@ let currentAccessToken = config.lmsAuthToken;
 
 const httpClient = axios.create({
   baseURL: config.lmsBaseUrl,
-  timeout: 15000,
+  timeout: 120000, // Increased from 15s to 120s to handle AI analysis & Render cold-start delays
   headers: { 'Content-Type': 'application/json' }
 });
 
