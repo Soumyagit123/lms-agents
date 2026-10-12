@@ -186,8 +186,13 @@ app.get('/api/reports/student/:id/subject-ai/:subjectId', async (req, res) => {
     //   return res.json({ success: true, data: cached });
     // }
 
+    console.log(`[Subject-AI] Request received for student ${studentId} and subject ${subjectId}`);
+    
     // Fetch Data using the CORRECT endpoint that gets the whole data
+    console.log(`[Subject-AI] Fetching data from LMS...`);
     const fullData = await lmsApiService.getSubjectPerformanceData(studentId, subjectId, authHeader);
+    console.log(`[Subject-AI] Data fetched successfully!`);
+    
     if (!fullData || !fullData.data) {
       throw new Error('Failed to parse subject performance payload');
     }
@@ -220,9 +225,30 @@ app.get('/api/reports/student/:id/subject-ai/:subjectId', async (req, res) => {
     const prompt = getSubjectAnalysisPrompt(studentName, subjectName, subjectCode, JSON.stringify(dataFromLms.trend || [], null, 2), stats);
     const response = await geminiPro.invoke([new HumanMessage(prompt)]);
     
-    // Parse
-    const text = response.content.toString().replace(/```json/g, '').replace(/```/g, '').trim();
-    const data = JSON.parse(text);
+    // Extract text safely from LangChain response.content (can be string or array of parts)
+    let rawText = '';
+    if (typeof response.content === 'string') {
+      rawText = response.content;
+    } else if (Array.isArray(response.content)) {
+      rawText = response.content.map((part: any) => typeof part === 'string' ? part : part?.text || '').join('');
+    } else {
+      rawText = JSON.stringify(response.content);
+    }
+
+    // Clean markdown code fence if present
+    let cleaned = rawText.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
+    } else {
+      // Find JSON object if there is extra preamble
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      }
+    }
+
+    const data = JSON.parse(cleaned);
     data.generatedAt = new Date().toISOString();
 
     // Save to Cache
@@ -313,9 +339,29 @@ app.get('/api/reports/student/:id/subject/:subjectId/attempt-ai/:attemptId', asy
     const prompt = getAttemptAnalysisPrompt(studentName, JSON.stringify(asmMatch, null, 2), meta, avgScore * 10);
     const response = await geminiPro.invoke([new HumanMessage(prompt)]);
     
-    // Parse
-    const text = response.content.toString().replace(/```json/g, '').replace(/```/g, '').trim();
-    const data = JSON.parse(text);
+    // Extract text safely from LangChain response.content
+    let rawText = '';
+    if (typeof response.content === 'string') {
+      rawText = response.content;
+    } else if (Array.isArray(response.content)) {
+      rawText = response.content.map((part: any) => typeof part === 'string' ? part : part?.text || '').join('');
+    } else {
+      rawText = JSON.stringify(response.content);
+    }
+
+    // Clean markdown code fence if present
+    let cleaned = rawText.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
+    } else {
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      }
+    }
+
+    const data = JSON.parse(cleaned);
 
     // Explicitly enforce exact scores from LMS data onto the AI response
     data.attemptId = parseInt(attemptId, 10);
